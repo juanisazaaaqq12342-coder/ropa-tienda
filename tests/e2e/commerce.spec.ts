@@ -1,0 +1,78 @@
+import { expect, test } from '@playwright/test';
+import type { Order, Product } from '../../apps/web/src/lib/types';
+import { apiPath, assertDemoMode, fillAddress, newCustomer, tinyPng } from './helpers';
+
+test('compra completa: catálogo, bolsa invitada, registro, comprobante, aprobación y seguimiento', async ({ page, browser, request, baseURL }, testInfo) => {
+  await assertDemoMode(request);
+  const productsResponse = await request.get(apiPath('/products?limit=100'));
+  const { items } = await productsResponse.json() as { items: Product[] };
+  const product = items.find(item => item.variants.some(variant => variant.stock > 1));
+  expect(product, 'Debe existir una pieza del seed con inventario.').toBeTruthy();
+  if (!product) return;
+  const variant = product.variants.find(item => item.stock > 1)!;
+  const customer = newCustomer();
+
+  await page.goto('/catalogo');
+  await page.getByRole('link', { name: `Ver ${product.name}`, exact: true }).click();
+  await expect(page.getByRole('heading', { name: product.name, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: variant.size, exact: true }).click();
+  const favorite = page.getByRole('button', { name: /Agregar a favoritos/ });
+  if (await favorite.count()) await favorite.first().click();
+  await page.getByRole('button', { name: /AÑADIR A (MI |LA )?BOLSA|AGREGAR A (MI |LA )?BOLSA/i }).click();
+  const drawer = page.getByRole('dialog', { name: 'Tu bolsa' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText(product.name, { exact: true })).toBeVisible();
+  await drawer.getByRole('link', { name: /Continuar con mi pedido/i }).click();
+  await expect(page).toHaveURL(/\/checkout$/);
+  await page.getByRole('tab', { name: 'Crear cuenta' }).click();
+  await page.getByLabel('Nombre completo').fill(customer.name);
+  await page.getByLabel('Correo electrónico').fill(customer.email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(customer.password);
+  await page.getByRole('button', { name: 'CREAR MI CUENTA' }).click();
+  await expect(page.getByRole('heading', { name: 'El último detalle.' })).toBeVisible();
+  const mergedCart = await page.request.get(apiPath('/cart'));
+  expect((await mergedCart.json()).items).toHaveLength(1);
+  await fillAddress(page);
+  await page.getByRole('radio', { name: /Nequi/ }).check();
+  await page.getByRole('checkbox', { name: /He leído y acepto/ }).check();
+  const checkoutResponse = page.waitForResponse(response => response.url().endsWith(apiPath('/checkout')) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'CREAR MI PEDIDO' }).click();
+  const orderResponse = await checkoutResponse;
+  expect(orderResponse.ok()).toBeTruthy();
+  const order = await orderResponse.json() as Order;
+  await expect(page).toHaveURL(new RegExp(`/cuenta/pedidos/${order.id}$`));
+  await expect(page.getByRole('heading', { name: `Pedido ${order.number}` })).toBeVisible();
+  expect(order.paymentStatus).toBe('PENDING');
+  await page.getByLabel('Sube tu comprobante').setInputFiles({ name: 'comprobante-prueba-e2e.png', mimeType: 'image/png', buffer: tinyPng });
+  await page.getByRole('button', { name: 'ENVIAR COMPROBANTE' }).click();
+  await expect(page.getByText('Recibimos tu comprobante.', { exact: false })).toBeVisible();
+  const underReviewResponse = await page.request.get(apiPath(`/orders/${order.id}`));
+  expect((await underReviewResponse.json()).paymentStatus).toBe('UNDER_REVIEW');
+  await page.screenshot({ path: testInfo.outputPath('pedido-comprobante.png'), fullPage: true });
+
+  const administrator = await browser.newContext({ baseURL });
+  try {
+    const adminPage = await administrator.newPage();
+    await adminPage.goto('/cuenta');
+    await adminPage.getByLabel('Correo electrónico').fill(process.env.SEED_ADMIN_EMAIL || '');
+    await adminPage.getByLabel('Contraseña', { exact: true }).fill(process.env.SEED_ADMIN_PASSWORD || '');
+    await adminPage.getByRole('button', { name: 'INGRESAR', exact: true }).click();
+    await expect(adminPage.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible();
+    await adminPage.goto(`/admin/pedidos/${order.id}`);
+    await expect(adminPage.getByRole('heading', { name: new RegExp(order.number) })).toBeVisible();
+    await adminPage.getByRole('button', { name: /APROBAR PAGO/i }).click();
+    await expect(adminPage.getByText('Pago aprobado', { exact: true }).first()).toBeVisible();
+    await adminPage.getByLabel('Estado del pedido').selectOption('PREPARING');
+    await adminPage.getByRole('button', { name: /GUARDAR (CAMBIOS|ACTUALIZACIÓN)/i }).click();
+    await expect.poll(async () => (await (await administrator.request.get(apiPath(`/admin/orders/${order.id}`))).json()).status).toBe('PREPARING');
+    await adminPage.getByLabel('Transportadora').selectOption('Coordinadora');
+    await adminPage.getByLabel(/Número de guía/).fill(`E2E-${order.number}`);
+    await adminPage.getByLabel('Estado del pedido').selectOption('SHIPPED');
+    await adminPage.getByRole('button', { name: /GUARDAR (CAMBIOS|ACTUALIZACIÓN)/i }).click();
+    await expect.poll(async () => (await (await administrator.request.get(apiPath(`/admin/orders/${order.id}`))).json()).status).toBe('SHIPPED');
+    await page.reload();
+    await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(`E2E-${order.number}`, { exact: false })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('pedido-seguimiento.png'), fullPage: true });
+  } finally { await administrator.close(); }
+});

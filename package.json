@@ -1,0 +1,15 @@
+{
+  "name": "luxe-woman", "version": "0.1.0", "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c yellow,cyan \"npm run dev -w @luxe/api\" \"npm run dev -w @luxe/web\"",
+    "build": "npm run db:generate -w @luxe/api && npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "eslint apps --max-warnings 0",
+    "test": "npm run test -w @luxe/api",
+    "test:email": "tsx --tsconfig apps/api/tsconfig.json scripts/test-email.ts",
+    "db:setup": "npm run db:generate -w @luxe/api && npm run db:migrate -w @luxe/api && npm run db:seed -w @luxe/api"
+  },
+  "devDependencies": {"concurrently":"^9.2.0","eslint":"^9.39.0","eslint-config-next":"16.3.6","typescript-eslint":"^8.48.0","@playwright/test":"^1.56.0","sharp":"^0.34.0"},
+  "engines": {"node": ">=22.12.0"}
+}

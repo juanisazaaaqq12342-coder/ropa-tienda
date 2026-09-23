@@ -1,0 +1,4 @@
+import Image from 'next/image';
+import Link from 'next/link';
+export const metadata = { title: 'Nuestra esencia' };
+export default function About() { return <><section className="editorial"><div className="editorial-image"><Image src="/images/editorial-hero.webp" alt="Colección Esencia de LUXE WOMAN" fill sizes="(max-width:760px) 100vw,50vw" priority /></div><div className="editorial-copy"><span className="eyebrow">NUESTRA ESENCIA</span><h1 className="page-title">El lujo de<br />ser tú misma.</h1><p>LUXE WOMAN nace de una idea sencilla: las mejores piezas son las que te hacen sentir tú. Sin esfuerzo, sin reglas y con toda la intención.</p><p>Reunimos ropa, zapatos, bolsos, joyas y accesorios en una boutique donde cada detalle invita a descubrir tu propio estilo.</p><Link className="text-link" href="/catalogo">Explora nuestro universo →</Link></div></section></>; }

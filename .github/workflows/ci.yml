@@ -1,0 +1,44 @@
+name: Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.3
+        env:
+          POSTGRES_USER: luxe
+          POSTGRES_PASSWORD: ci_isolated_database
+          POSTGRES_DB: luxe_woman_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U luxe -d luxe_woman_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://luxe:ci_isolated_database@localhost:5432/luxe_woman_test?schema=public
+      APP_URL: http://localhost:3000
+      API_URL: http://127.0.0.1:4000
+      DEMO_MODE: "true"
+      SEED_ADMIN_EMAIL: admin@luxewoman.local
+      SEED_ADMIN_PASSWORD: CI-only-pass-2791
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:setup
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high

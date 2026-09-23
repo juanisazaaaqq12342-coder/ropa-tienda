@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, Check, LockKeyhole, LogOut, MapPin, Package, Upload, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
@@ -23,6 +24,7 @@ export function AddressFields({ value, onChange }: { value: Address; onChange: (
 }
 
 export function AuthPanel({ afterLogin }: { afterLogin?: () => void }) {
+  const router = useRouter();
   const { settings, refresh } = useStore();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
@@ -31,8 +33,20 @@ export function AuthPanel({ afterLogin }: { afterLogin?: () => void }) {
     event.preventDefault(); setError(""); setBusy(true);
     const form = new FormData(event.currentTarget);
     try {
-      await api(`/auth/${mode}`, { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password"), ...(mode === "register" ? { name: form.get("name") } : {}) }) });
-      await refresh(); afterLogin?.();
+      const result = await api<{ user?: { role?: string } }>(`/auth/${mode}`, {
+        method: "POST",
+        body: JSON.stringify({
+          email: form.get("email"),
+          password: form.get("password"),
+          ...(mode === "register" ? { name: form.get("name") } : {})
+        })
+      });
+      await refresh();
+      if (result?.user?.role === "ADMIN" || result?.user?.role === "EMPLOYEE") {
+        router.push("/admin");
+        return;
+      }
+      afterLogin?.();
     } catch (error) { setError(messageOf(error)); } finally { setBusy(false); }
   };
   return <div className="auth-layout"><aside className="auth-story"><span className="eyebrow">EL ESTILO EMPIEZA CONTIGO</span><h2>Un espacio<br />solo para ti.</h2><p>Guarda tus favoritos, encuentra tu próxima pieza especial y acompaña cada pedido hasta tu puerta.</p></aside><section className="operations-panel auth-form"><p className="eyebrow">BIENVENIDA A {settings?.brandName || "LA BOUTIQUE"}</p><h1 className="page-title">{mode === "login" ? "Qué bueno verte." : "Tu nueva inspiración."}</h1><p className="muted">{mode === "login" ? "Ingresa a tu cuenta para continuar." : "Crea tu cuenta y encuentra tu propio estilo."}</p><div className="operations-tabs" role="tablist" aria-label="Acceso a tu cuenta"><button role="tab" aria-selected={mode === "login"} onClick={() => { setMode("login"); setError(""); }}>Iniciar sesión</button><button role="tab" aria-selected={mode === "register"} onClick={() => { setMode("register"); setError(""); }}>Crear cuenta</button></div>{error && <p className="operations-alert" role="alert">{error}</p>}<form onSubmit={submit}>{mode === "register" && <label className="field">Nombre completo<input name="name" autoComplete="name" required minLength={2} maxLength={100} /></label>}<label className="field">Correo electrónico<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="tu@correo.com" /></label><label className="field">Contraseña<input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={8} maxLength={128} placeholder={mode === "register" ? "Al menos 8 caracteres" : "Tu contraseña"} /></label>{mode === "login" && <Link className="operations-link" href="/cuenta/recuperar">Olvidé mi contraseña</Link>}{mode === "register" && <p className="muted" style={{ fontSize: 11 }}>Al crear tu cuenta, aceptas nuestros <Link href="/legal/terminos">términos</Link> y conoces nuestra <Link href="/legal/privacidad">política de privacidad</Link>.</p>}<button className="button" disabled={busy}>{busy ? "Un momento…" : mode === "login" ? "INGRESAR" : "CREAR MI CUENTA"}<ArrowRight size={16} /></button></form>{settings?.googleEnabled && <><div className="auth-divider">o continúa con</div><a className="button button-secondary" href="/api/v1/auth/google">Continuar con Google</a></>}<p className="muted" style={{ fontSize: 11, display: "flex", gap: 7, marginTop: 24 }}><LockKeyhole size={13} /> Tu información está protegida.</p></section></div>;
@@ -52,6 +66,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
 }
 
 export function Account() {
+  const router = useRouter();
   const { user, refresh } = useStore();
   const [tab, setTab] = useState("pedidos");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -61,6 +76,12 @@ export function Account() {
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(() => Boolean(user));
+
+  useEffect(() => {
+    if (user && (user.role === "ADMIN" || user.role === "EMPLOYEE")) {
+      router.replace("/admin");
+    }
+  }, [user, router]);
   useEffect(() => {
     if (!user) return;
     let cancelled = false;

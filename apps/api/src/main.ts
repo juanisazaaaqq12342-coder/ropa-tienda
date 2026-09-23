@@ -31,11 +31,17 @@ class Errors implements ExceptionFilter{
 export async function bootstrap(){
   validateEnvironment();const app=await NestFactory.create(AppModule,{bodyParser:false});
   app.use(helmet());app.use(express.json({limit:'64kb'}));app.use(cookieParser());
-  app.enableCors({origin:[appConfig.appUrl],credentials:true});
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/' && req.method === 'GET') {
+      return res.json({ name: 'LUXE WOMAN API', status: 'online', version: '1.0.0', docs: '/api/docs', health: '/api/v1/health' });
+    }
+    next();
+  });
+  app.enableCors({ origin: true, credentials: true });
   const auth=app.get(AuthService);const attempts=new Map<string,{count:number,until:number}>();
   app.use(async(req:AuthedRequest,res:Response,next:NextFunction)=>{
     res.setHeader('X-Request-Id',randomUUID());res.setHeader('Cache-Control','no-store');
-    if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin&&req.headers.origin!==new URL(appConfig.appUrl).origin)return res.status(403).json({statusCode:403,message:'Origen de solicitud no permitido.'});
+    if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin&&appConfig.production&&!req.headers.origin.includes('vercel.app')&&!req.headers.origin.includes('localhost')&&req.headers.origin!==new URL(appConfig.appUrl).origin)return res.status(403).json({statusCode:403,message:'Origen de solicitud no permitido.'});
     if(req.path.startsWith('/api/v1/auth/')&&req.method==='POST'){
       const key=`${req.ip}:${req.path}`;const now=Date.now();const item=attempts.get(key);if(item&&item.until>now){item.count++;if(item.count>15){res.setHeader('Retry-After',Math.ceil((item.until-now)/1000));return res.status(429).json({statusCode:429,message:'Demasiados intentos. Espera unos minutos.'});}}else attempts.set(key,{count:1,until:now+15*60000});
       if(attempts.size>10000)for(const [k,v] of attempts)if(v.until<=now)attempts.delete(k);

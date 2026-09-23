@@ -6,8 +6,9 @@ import { Pool } from 'pg';
 @Injectable()
 export class Database extends PrismaClient implements OnModuleDestroy {
   constructor() {
-    const connectionString = process.env.DATABASE_URL;
-    const isRemote = Boolean(connectionString && !connectionString.includes('127.0.0.1') && !connectionString.includes('localhost'));
+    const rawUrl = process.env.DATABASE_URL || '';
+    const isRemote = Boolean(rawUrl && !rawUrl.includes('127.0.0.1') && !rawUrl.includes('localhost'));
+    const connectionString = isRemote ? rawUrl.replace(/[?&]sslmode=[^&]+/g, '').replace(/\?$/, '') : rawUrl;
     const pool = new Pool({
       connectionString,
       ssl: isRemote ? { rejectUnauthorized: false } : undefined,

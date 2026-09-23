@@ -28,7 +28,7 @@ export class CatalogService{
 @Controller()
 export class CatalogController{
   constructor(@Inject(CatalogService) private readonly catalog:CatalogService){}
-  @Get('health') async health(){try{await this.catalog.db.$queryRaw`SELECT 1`;return{status:'ok'};}catch{throw new ServiceUnavailableException('La base de datos no está disponible.');}}
+  @Get('health') async health(){try{await this.catalog.db.$queryRaw`SELECT 1`;return{status:'ok'};}catch(error){console.error('DATABASE_HEALTH_ERROR:',error);throw new ServiceUnavailableException('La base de datos no está disponible.');}}
   @Get('settings') settings(){return this.catalog.settings();}
   @Get('categories') categories(){return this.catalog.db.category.findMany({orderBy:{id:'asc'}});}
   @Get('products') products(@Query() query:unknown){return this.catalog.products(query);}

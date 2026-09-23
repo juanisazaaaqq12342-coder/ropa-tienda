@@ -1,5 +1,8 @@
 import type { NextConfig } from 'next';
-const apiUrl = process.env.API_URL || 'http://127.0.0.1:4000';
+const apiUrl =
+  process.env.API_URL?.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '') ||
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '') ||
+  'https://ropa-tienda.onrender.com';
 const config: NextConfig = {
   poweredByHeader: false,
   images: { remotePatterns: [{ protocol: 'https', hostname: 'images.unsplash.com' }] },

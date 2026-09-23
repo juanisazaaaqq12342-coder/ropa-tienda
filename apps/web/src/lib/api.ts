@@ -4,7 +4,11 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return response.json() as Promise<T>;
 }
 export async function serverApi<T>(path: string): Promise<T> {
-  const response = await fetch(`${process.env.API_URL || 'http://127.0.0.1:4000'}/api/v1${path}`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  const base =
+    process.env.API_URL?.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '') ||
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '') ||
+    'https://ropa-tienda.onrender.com';
+  const response = await fetch(`${base}/api/v1${path}`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error('La boutique no está disponible en este momento.');
   return response.json() as Promise<T>;
 }

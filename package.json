@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c yellow,cyan \"npm run dev -w @luxe/api\" \"npm run dev -w @luxe/web\"",
     "build": "npm run db:generate -w @luxe/api && npm run build --workspaces",
+    "build:api": "npm run db:generate -w @luxe/api && npm run build -w @luxe/api",
+    "start:api": "node apps/api/dist/src/main.js",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint apps --max-warnings 0",
     "test": "npm run test -w @luxe/api",

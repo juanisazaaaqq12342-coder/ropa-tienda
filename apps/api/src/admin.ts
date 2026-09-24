@@ -1,4 +1,5 @@
-import { Inject, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Inject, Controller, Get, Post, Patch, Delete, Body, Param, Query, Req, UploadedFile, UseInterceptors, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -7,14 +8,26 @@ import { AuthedRequest, requireStaff, publicUser } from './auth';
 import { CatalogService, productInclude } from './catalog';
 import { OrdersService, orderInclude } from './orders';
 import { MailService } from './mail';
+import { StorageService } from './storage';
 import { assertOrderTransition, settingsSchema, parse } from './domain';
-const imageUrl=z.string().max(1000).refine(s=>s.startsWith('/images/')||/^https:\/\//.test(s),'Usa una imagen local /images/ o una URL HTTPS.');
+const imageUrl=z.string().max(1000).refine(s=>s.startsWith('/images/')||/^https?:\/\//.test(s),'Usa una imagen local /images/ o una URL HTTPS.');
 const productSchema=z.object({name:z.string().trim().min(2).max(120),slug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(150),description:z.string().trim().min(10).max(5000),categoryId:z.string().min(1),price:z.number().int().min(1).max(100000000),compareAtPrice:z.number().int().positive().max(100000000).nullable().optional(),details:z.string().max(3000).default(''),materials:z.string().max(1000).default(''),care:z.string().max(1000).default(''),featured:z.boolean().default(false),isNew:z.boolean().default(false),active:z.boolean().default(true),images:z.array(z.object({url:imageUrl,alt:z.string().max(200).optional()})).min(1).max(10),variants:z.array(z.object({sku:z.string().trim().min(2).max(80),size:z.string().trim().min(1).max(30),color:z.string().trim().min(1).max(40),colorHex:z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#D9BFA9'),stock:z.number().int().min(0).max(100000)})).min(1).max(100)}).refine(p=>new Set(p.variants.map(v=>v.sku)).size===p.variants.length,'Cada SKU debe ser único.').refine(p=>new Set(p.variants.map(v=>`${v.size}:${v.color}`)).size===p.variants.length,'No repitas talla y color.');
 @ApiTags('Administración')
 @Controller('admin')
 export class AdminController{
-  constructor(@Inject(Database) private readonly db:Database,@Inject(CatalogService) private readonly catalog:CatalogService,@Inject(OrdersService) private readonly orders:OrdersService,@Inject(MailService) private readonly mail:MailService){}
+  constructor(@Inject(Database) private readonly db:Database,@Inject(CatalogService) private readonly catalog:CatalogService,@Inject(OrdersService) private readonly orders:OrdersService,@Inject(MailService) private readonly mail:MailService,@Inject(StorageService) private readonly storage:StorageService){}
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  async uploadImage(@Req() req: AuthedRequest, @UploadedFile() file?: Express.Multer.File) {
+    requireStaff(req);
+    if (!file) throw new BadRequestException('Selecciona una imagen.');
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+    if (!allowed.includes(file.mimetype)) throw new BadRequestException('Formato no permitido. Usa JPG, PNG, WEBP o AVIF.');
+    const result = await this.storage.upload(file, 'products');
+    return { url: result.url, provider: result.provider };
+  }
   @Get('metrics') async metrics(@Req() req:AuthedRequest){requireStaff(req,true);const [revenue,orders,customers,products,pendingPayments,lowStock,recentOrders,paid]=await Promise.all([this.db.order.aggregate({where:{paymentStatus:'APPROVED',status:{not:'CANCELLED'}},_sum:{total:true}}),this.db.order.count(),this.db.user.count({where:{role:'CUSTOMER'}}),this.db.product.count({where:{active:true}}),this.db.order.count({where:{paymentStatus:'UNDER_REVIEW'}}),this.db.productVariant.count({where:{stock:{lt:5},product:{active:true}}}),this.db.order.findMany({take:8,orderBy:{createdAt:'desc'},include:orderInclude}),this.db.order.findMany({where:{paymentStatus:'APPROVED',status:{not:'CANCELLED'}},select:{createdAt:true,total:true}})]);const months=new Map<string,number>();for(const o of paid){const month=o.createdAt.toISOString().slice(0,7);months.set(month,(months.get(month)||0)+o.total);}return{revenue:revenue._sum.total||0,orders,customers,products,pendingPayments,lowStock,recentOrders,salesByMonth:[...months.entries()].sort().map(([month,total])=>({month,total}))};}
+
   @Get('products') products(@Req() req:AuthedRequest,@Query() query:Record<string,string>){requireStaff(req);return this.catalog.products({limit:'100',...query},true);}
   @Post('products') async createProduct(@Req() req:AuthedRequest,@Body() body:unknown){const actor=requireStaff(req);const v=parse(productSchema,body);const {images,variants,...data}=v;return this.db.$transaction(async tx=>{const product=await tx.product.create({data:{...data,images:{create:images.map((i,position)=>({...i,alt:i.alt||v.name,position}))},variants:{create:variants}},include:productInclude});await tx.auditLog.create({data:{actorId:actor.id,action:'PRODUCT_CREATED',entityId:product.id}});return product;});}
   @Patch('products/:id') async updateProduct(@Req() req:AuthedRequest,@Param('id') id:string,@Body() body:unknown){const actor=requireStaff(req);const v=parse(productSchema,body);const {images,variants,...data}=v;return this.db.$transaction(async tx=>{const current=await tx.product.findUnique({where:{id},include:{variants:true}});if(!current)throw new NotFoundException('Producto no encontrado.');await tx.product.update({where:{id},data});await tx.productImage.deleteMany({where:{productId:id}});await tx.productImage.createMany({data:images.map((i,position)=>({productId:id,...i,alt:i.alt||v.name,position}))});for(const variant of variants){const existing=current.variants.find(i=>i.sku===variant.sku);if(existing)await tx.productVariant.update({where:{id:existing.id},data:variant});else await tx.productVariant.create({data:{productId:id,...variant}});}const removed=current.variants.filter(i=>!variants.some(v=>v.sku===i.sku));if(removed.length)await tx.productVariant.updateMany({where:{id:{in:removed.map(v=>v.id)}},data:{stock:0}});await tx.auditLog.create({data:{actorId:actor.id,action:'PRODUCT_UPDATED',entityId:id,metadata:{previousPrice:current.price,newPrice:v.price}}});return tx.product.findUniqueOrThrow({where:{id},include:productInclude});});}

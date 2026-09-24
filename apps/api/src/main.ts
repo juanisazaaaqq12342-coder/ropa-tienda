@@ -16,8 +16,10 @@ import { CartController, CartService } from './cart';
 import { AccountController } from './account';
 import { OrdersController, OrdersService } from './orders';
 import { AdminController } from './admin';
-@Module({controllers:[AuthController,CatalogController,CartController,AccountController,OrdersController,AdminController],providers:[Database,MailService,AuthService,CatalogService,CartService,OrdersService]})
+import { StorageService } from './storage';
+@Module({controllers:[AuthController,CatalogController,CartController,AccountController,OrdersController,AdminController],providers:[Database,MailService,AuthService,CatalogService,CartService,OrdersService,StorageService]})
 export class AppModule{}
+
 @Catch()
 class Errors implements ExceptionFilter{
   private readonly logger=new Logger('API');

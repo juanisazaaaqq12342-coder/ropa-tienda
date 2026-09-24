@@ -1,3 +1,12 @@
-import Link from 'next/link';
-export const metadata = { title: 'Estamos para ti' };
-export default function Help() { return <div className="page-shell prose"><span className="eyebrow">ESTAMOS PARA TI</span><h1>Los pequeños detalles</h1><section id="envios"><h2>Envíos y entregas</h2><p>La tienda contempla envíos en Colombia con Coordinadora, Interrapidísimo y entrega propia. El costo se calcula en tu bolsa según la configuración de la boutique. Puedes consultar la guía y las actualizaciones de cada pedido desde tu cuenta.</p><p>Durante el desarrollo, los productos y las tarifas son ilustrativos. Los tiempos y la cobertura comercial se publicarán antes de abrir la tienda.</p></section><section id="cambios"><h2>Cambios y devoluciones</h2><p>La política comercial definitiva está pendiente de publicación. Por ahora la tienda opera únicamente en modo de desarrollo y no recibe compras comerciales. Antes de la apertura se informarán condiciones, plazos y canales de atención.</p></section><section id="tallas"><h2>Encuentra tu talla</h2><p>Consulta las tallas disponibles en cada producto. Las medidas específicas dependen de la prenda y serán incorporadas con el catálogo comercial. Si una combinación de talla y color no está disponible, no podrás añadirla a tu bolsa.</p></section><section id="pagos"><h2>Pagos con Nequi y Daviplata</h2><p>Al crear un pedido, se muestran las instrucciones del método elegido. Después de transferir, adjunta el comprobante en el detalle del pedido. La recepción del archivo no confirma el pago: nuestro equipo debe revisarlo.</p><p>No realices transferencias reales mientras la tienda muestre el aviso de desarrollo.</p></section><section id="contacto"><h2>Tu cuenta, a tu alcance</h2><p>Guarda tus direcciones, consulta tus pedidos y sigue cada paso del envío desde <Link href="/cuenta">tu cuenta</Link>.</p><p>Para atención personalizada y asesoría de tallas o pagos, escríbenos directamente a nuestra línea oficial de <a href="https://wa.me/573001234567?text=Hola%20LUXE%20WOMAN,%20deseo%20asesor%C3%ADa%20personalizada" target="_blank" rel="noopener noreferrer">WhatsApp: +57 300 123 4567</a> o al correo electrónico <a href="mailto:contacto@luxewoman.com.co">contacto@luxewoman.com.co</a>.</p></section></div>; }
+import type { Metadata } from 'next';
+import { HelpContent } from '@/components/help-content';
+
+export const metadata: Metadata = {
+  title: 'Estamos para ti — Centro de Ayuda y Contacto',
+  description: 'Envíos nacionales, políticas de cambio, métodos de pago y asesoría por WhatsApp de LUXE WOMAN.'
+};
+
+export default function Help() {
+  return <HelpContent />;
+}
+
